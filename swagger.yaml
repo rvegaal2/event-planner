@@ -1,0 +1,409 @@
+openapi: 3.0.3
+info:
+  title: Event Planner Platform API
+  description: |
+    Documentación de los endpoints del sistema Event Planner Platform.
+    
+    Plataforma web para la gestión y contratación de servicios de eventos en Colombia.
+    Conecta organizadores, proveedores y clientes en un marketplace centralizado.
+    
+    ## Autenticación
+    El sistema utiliza autenticación por sesión (Django session-based auth).
+    Se debe iniciar sesión en `/users/login/` antes de acceder a endpoints protegidos.
+    
+    ## Roles de usuario
+    - **Cliente**: puede ver servicios y registrarse.
+    - **Proveedor**: puede crear y gestionar sus propios servicios.
+  version: 1.0.0
+  contact:
+    name: Equipo Event Planner
+    url: https://github.com/PRNicolasCC/event_planner
+
+servers:
+  - url: http://127.0.0.1:8000
+    description: Servidor de desarrollo local
+  - url: https://event-planner.onrender.com
+    description: Servidor de producción (Render)
+
+tags:
+  - name: Usuarios
+    description: Registro, login y logout de usuarios
+  - name: Servicios
+    description: Listado y creación de servicios de eventos
+
+paths:
+
+  # ──────────────────────────────────────────────
+  # USUARIOS
+  # ──────────────────────────────────────────────
+
+  /users/registro/:
+    get:
+      tags:
+        - Usuarios
+      summary: Formulario de registro
+      description: Devuelve el formulario HTML para registrar un nuevo usuario (cliente o proveedor).
+      responses:
+        '200':
+          description: Página HTML con el formulario de registro
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      tags:
+        - Usuarios
+      summary: Registrar nuevo usuario
+      description: |
+        Procesa el formulario de registro. Si es válido, crea el usuario, inicia sesión 
+        automáticamente y redirige al listado de servicios.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegistroUsuarioInput'
+      responses:
+        '302':
+          description: Registro exitoso. Redirige a `/services/`
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /services/
+        '200':
+          description: Formulario con errores de validación
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /users/login/:
+    get:
+      tags:
+        - Usuarios
+      summary: Formulario de inicio de sesión
+      description: Devuelve el formulario HTML de login. Solo accesible para proveedores.
+      responses:
+        '200':
+          description: Página HTML con formulario de login
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      tags:
+        - Usuarios
+      summary: Iniciar sesión
+      description: |
+        Autentica al usuario con email y contraseña.
+        Solo usuarios con rol **proveedor** (`es_proveedor=True`) pueden iniciar sesión por este formulario.
+        Usuarios sin permiso de organizador recibirán un error de validación.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+      responses:
+        '302':
+          description: Login exitoso. Redirige a la URL configurada en `LOGIN_REDIRECT_URL` (`/services/`)
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /services/
+        '200':
+          description: Formulario con error de credenciales o permisos insuficientes
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /users/logout/:
+    post:
+      tags:
+        - Usuarios
+      summary: Cerrar sesión
+      description: Cierra la sesión activa del usuario y redirige a la página de login.
+      responses:
+        '302':
+          description: Sesión cerrada. Redirige a `/users/login/`
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /users/login/
+
+  # ──────────────────────────────────────────────
+  # SERVICIOS
+  # ──────────────────────────────────────────────
+
+  /services/:
+    get:
+      tags:
+        - Servicios
+      summary: Listar todos los servicios
+      description: |
+        Página pública que muestra todos los servicios registrados en la plataforma.
+        No requiere autenticación.
+      responses:
+        '200':
+          description: Listado de servicios en formato HTML
+          content:
+            text/html:
+              schema:
+                type: string
+              example: "Página HTML con tarjetas de cada servicio disponible"
+
+  /services/crear/:
+    get:
+      tags:
+        - Servicios
+      summary: Formulario para crear servicio
+      description: |
+        Muestra el formulario para publicar un nuevo servicio.
+        
+        **Requiere autenticación y rol proveedor.**
+        Si el usuario no está autenticado, redirige a login.
+        Si el usuario es cliente (`es_proveedor=False`), redirige al listado.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Formulario HTML para crear servicio
+          content:
+            text/html:
+              schema:
+                type: string
+        '302':
+          description: Redirige si no tiene permisos o no está autenticado
+          headers:
+            Location:
+              schema:
+                type: string
+    post:
+      tags:
+        - Servicios
+      summary: Crear nuevo servicio
+      description: |
+        Procesa el formulario de creación de servicio.
+        El proveedor se asigna automáticamente al usuario autenticado.
+        
+        **Requiere autenticación y rol proveedor.**
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServicioInput'
+      responses:
+        '302':
+          description: Servicio creado exitosamente. Redirige a `/services/`
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /services/
+        '200':
+          description: Formulario con errores de validación
+          content:
+            text/html:
+              schema:
+                type: string
+
+  # ──────────────────────────────────────────────
+  # ADMIN
+  # ──────────────────────────────────────────────
+
+  /admin/:
+    get:
+      tags:
+        - Administración
+      summary: Panel de administración Django
+      description: |
+        Panel de administración integrado de Django.
+        Permite gestionar usuarios, servicios y todos los modelos del sistema.
+        Requiere usuario con `is_staff=True`.
+      responses:
+        '200':
+          description: Panel de administración HTML
+        '302':
+          description: Redirige a login de admin si no está autenticado
+
+# ──────────────────────────────────────────────
+# COMPONENTES
+# ──────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: Autenticación mediante cookie de sesión Django
+
+  schemas:
+    RegistroUsuarioInput:
+      type: object
+      required:
+        - email
+        - tipo_usuario
+        - password1
+        - password2
+        - csrfmiddlewaretoken
+      properties:
+        email:
+          type: string
+          format: email
+          description: Correo electrónico único del usuario
+          example: usuario@ejemplo.com
+        tipo_usuario:
+          type: string
+          enum:
+            - cliente
+            - proveedor
+          description: Rol del usuario en la plataforma
+          example: proveedor
+        password1:
+          type: string
+          format: password
+          description: Contraseña del usuario
+          example: "MiPassword123!"
+        password2:
+          type: string
+          format: password
+          description: Confirmación de contraseña (debe coincidir con password1)
+          example: "MiPassword123!"
+        csrfmiddlewaretoken:
+          type: string
+          description: Token CSRF de Django (generado automáticamente en el formulario)
+
+    LoginInput:
+      type: object
+      required:
+        - username
+        - password
+        - csrfmiddlewaretoken
+      properties:
+        username:
+          type: string
+          format: email
+          description: Email del usuario (campo `username` en el formulario de Django)
+          example: proveedor@ejemplo.com
+        password:
+          type: string
+          format: password
+          description: Contraseña
+          example: "MiPassword123!"
+        csrfmiddlewaretoken:
+          type: string
+          description: Token CSRF de Django
+
+    ServicioInput:
+      type: object
+      required:
+        - nombre
+        - descripcion
+        - categoria
+        - ciudad
+        - precio_referencia
+        - telefono_contacto
+        - csrfmiddlewaretoken
+      properties:
+        nombre:
+          type: string
+          maxLength: 150
+          description: Nombre del servicio
+          example: "Fotografía profesional para bodas"
+        descripcion:
+          type: string
+          description: Descripción detallada del servicio
+          example: "Cobertura completa del evento, álbum digital incluido."
+        categoria:
+          type: string
+          maxLength: 100
+          description: Categoría del servicio
+          example: "Fotografía"
+        ciudad:
+          type: string
+          maxLength: 100
+          description: Ciudad donde se presta el servicio
+          example: "Bogotá"
+        precio_referencia:
+          type: number
+          format: decimal
+          description: Precio referencial del servicio en COP
+          example: 1500000.00
+        telefono_contacto:
+          type: string
+          maxLength: 20
+          description: Teléfono de contacto del proveedor
+          example: "3001234567"
+        csrfmiddlewaretoken:
+          type: string
+          description: Token CSRF de Django
+
+    Usuario:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID único del usuario
+        email:
+          type: string
+          format: email
+          description: Correo electrónico (identificador principal)
+        es_proveedor:
+          type: boolean
+          description: Indica si el usuario tiene rol de proveedor
+          default: false
+        es_cliente:
+          type: boolean
+          description: Indica si el usuario tiene rol de cliente
+          default: true
+        is_staff:
+          type: boolean
+          description: Indica si el usuario puede acceder al admin de Django
+        date_joined:
+          type: string
+          format: date-time
+          description: Fecha de registro
+
+    Servicio:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID único del servicio
+        proveedor:
+          type: integer
+          description: ID del usuario proveedor que publicó el servicio
+        nombre:
+          type: string
+          description: Nombre del servicio
+        descripcion:
+          type: string
+          description: Descripción del servicio
+        categoria:
+          type: string
+          description: Categoría del servicio
+        ciudad:
+          type: string
+          description: Ciudad de prestación
+        precio_referencia:
+          type: number
+          description: Precio referencial en COP
+        telefono_contacto:
+          type: string
+          description: Teléfono de contacto
+        activo:
+          type: boolean
+          description: Si el servicio está visible públicamente
+          default: true
+        fecha_creacion:
+          type: string
+          format: date-time
+          description: Fecha de publicación del servicio
